@@ -1,0 +1,146 @@
+---
+title: "ABI PROJECT TEXT MINING OF SOCIAL MEDIA FEEDBACK"
+author: "Group 8"
+date: "April 27, 2016"
+output: html_document
+---
+
+
+```{r}
+
+library(twitteR)
+library(sentiment)
+library(plyr)
+library(ggplot2)
+library(wordcloud)
+library(RColorBrewer)
+library(tm)
+getwd()
+setwd("D:\\Course\\ABI")
+mydata <- read.csv("Hughes.csv")
+summary(mydata)
+
+
+# remove retweet entities
+mydata$Content  = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", mydata$Content)
+View(mydata$Content)
+# remove at people
+mydata$Content  = gsub("@\\w+", "", mydata$Content)
+# remove punctuation
+mydata$Content  = gsub("[[:punct:]]", "",mydata$Content)
+# remove numbers
+mydata$Content  = gsub("[[:digit:]]", "", mydata$Content)
+# remove html links
+mydata$Content  = gsub("http\\w+", "", mydata$Content)
+# remove unnecessary spaces
+mydata$Content  = gsub("[ \t]{2,}", "", mydata$Content)
+mydata$Content = gsub("^\\s+|\\s+$", "", mydata$Content)
+View(mydata)
+
+##CLASSIFICATION
+
+
+# classify emotion
+class_emo = classify_emotion(mydata$Content, algorithm="bayes", prior=1.0)
+# get emotion best fit
+emotion = class_emo[,7]
+
+View(mydata)
+# classify polarity
+class_pol = classify_polarity(mydata$Content, algorithm="bayes")
+# get polarity best fit
+polarity = class_pol[,4]
+
+# data frame with results
+sent_df = data.frame(text=mydata$Content, emotion=emotion,
+                     polarity=polarity, stringsAsFactors=FALSE)
+
+# sort data frame
+sent_df = within(sent_df,emotion <- factor(emotion, levels=names(sort(table(emotion), decreasing=TRUE))))
+
+View(sent_df)
+
+data1 <- read.csv("Hughes.csv")
+
+
+
+newdata <- cbind(data1, sent_df)
+
+View(newdata)
+newdata$text <- NULL
+View(newdata)
+# substitute NA's by "unknown"
+
+newdata$content =emotion[is.na(emotion)] = "unknown"
+newdata$emotion =emotion[is.na(emotion)] = "unknown"
+# plot distribution of emotions
+
+library(ggplot2)
+ggplot(sent_df, aes(x=emotion)) +
+  geom_bar(aes(y=..count.., fill=emotion)) +
+  scale_fill_brewer(palette="Dark2") +
+  labs(x="Emotion Categories", y="Count")
+
+# plot distribution of polarity
+ggplot(sent_df, aes(x=polarity)) +
+  geom_bar(aes(y=..count.., fill=polarity)) +
+  scale_fill_brewer(palette="RdGy") +
+  labs(x="polarity categories", y="number of tweets") 
+
+
+#WORD CLOUD
+
+# separating text by emotion
+emos = levels(factor(sent_df$emotion))
+nemo = length(emos)
+emo.docs = rep("", nemo)
+for (i in 1:nemo)
+{
+  tmp = newdata$Content[emotion == emos[i]]
+  emo.docs[i] = paste(tmp, collapse=" ")
+}
+
+# remove stopwords
+emo.docs = removeWords(emo.docs, stopwords("english"))
+# create corpus
+corpus = Corpus(VectorSource(emo.docs))
+tdm1 = TermDocumentMatrix(corpus)
+tdm5 = as.matrix(tdm1)
+
+dtm1 =as.DocumentTermMatrix(tdm5,weighting = weightTfIdf)
+matrix=removeSparseTerms(dtm1,sparse = 0.99)
+colnames(tdm5) = emos
+
+# comparison word cloud
+comparison.cloud(tdm5, colors = brewer.pal(nemo, "Dark2"),
+                 scale = c(3,.5), random.order = FALSE, title.size = 1.5)
+
+
+#CLUSTERING USING HISTOGRAM
+
+corpus1 = Corpus(VectorSource(sent_df$text))
+tdm7 =TermDocumentMatrix(corpus1)
+tdm10=removeSparseTerms(tdm7, sparse = 0.95)
+tdm9= as.matrix(tdm10)
+
+distMatrix = dist(scale(tdm9), method = "euclidian")
+fit = hclust(distMatrix,method="ward.D2")
+
+plot(fit)
+
+
+#ASSOCIATION
+
+term=TermDocumentMatrix(corpus,control=list(wordlengths =c(1,Inf)))
+term
+inspect(term)
+freq.terms = findFreqTerms(term, lowfreq = 10)
+term.freq =rowSums(as.matrix(term))
+term.freq = subset(term.freq, term.freq >=10)
+df =data.frame(term =names(term.freq), freq=term.freq)
+findAssocs(term, "service", 0.89)
+
+
+
+```
+
